@@ -22,7 +22,6 @@ WITH base AS (
         RS.RLTD_PADRS_NW_SPCLTY_EFCTV_DT,
         RS.PRMRY_SPCLTY_IND,
         PS.SPCLTY_CD,
-
         /* Concatenated address */
         RTRIM(
             NVL2(NULLIF(TRIM(S.ADRS_LINE_1_TXT), ''), TRIM(S.ADRS_LINE_1_TXT) || ', ', '') ||
@@ -33,17 +32,16 @@ WITH base AS (
             NVL2(NULLIF(TRIM(S.POSTL_CD), ''), TRIM(S.POSTL_CD), ''),
             ', '
         ) AS FULL_ADDRESS,
-
-        S.ADRS_LINE_1_TXT,
-        S.ADRS_LINE_2_TXT,
-        S.ADRS_LINE_3_TXT,
-        S.POSTL_CD_ST_PRVNC_NM,
-        S.POSTL_CD,
-        S.ADRS_CITY_NM,
-        S.ADRS_CNTRY_NM,
-        S.ADRS_EFCTV_DT,
-        S.ADRS_TRMNTN_DT,
-        S.ADRS_TRMNTN_RSN_CD,
+--        S.ADRS_LINE_1_TXT,
+--        S.ADRS_LINE_2_TXT,
+--        S.ADRS_LINE_3_TXT,
+--        S.POSTL_CD_ST_PRVNC_NM,
+--        S.POSTL_CD,
+--        S.ADRS_CITY_NM,
+--        S.ADRS_CNTRY_NM,
+--        S.ADRS_EFCTV_DT,
+--        S.ADRS_TRMNTN_DT,
+--        S.ADRS_TRMNTN_RSN_CD,
         NW.RGNL_NTWK_ID,
         NW.NTWK_TRMNTN_DT,
         NW.NTWK_TRMNTN_RSN_CD,
@@ -83,8 +81,16 @@ WITH base AS (
       AND L_ORG.PROV_ORG_FED_TAX_ID = '474334653'
       AND L_IND.NPI = '1215469283'
       AND C.CD_VAL_NM = 'Commercial'
+      AND J.RLTD_PADRS_NTWK_TRMNTN_DT = TO_DATE('02/19/2026', 'MM/DD/YYYY')
+      AND J.RLTD_PADRS_NTWK_TRMNTN_RSN_CD = '10054'
 )
-SELECT *
+SELECT base.*,
+CASE WHEN RLTD_PADRS_NTWK_TRMNTN_DT = TO_DATE('02/19/2026', 'MM/DD/YYYY')
+            AND RLTD_PADRS_NTWK_TRMNTN_RSN_CD = '10054'
+  THEN 'Audit Pass'
+  ELSE 'Audit Fail' 
+END
+
 FROM base
 WHERE REGEXP_REPLACE(LOWER(TRIM(FULL_ADDRESS)), '[^a-z0-9]+', '') =
       REGEXP_REPLACE(LOWER(TRIM('150 Valpreda Rd, San Marcos, CA, 92069')), '[^a-z0-9]+', '');
