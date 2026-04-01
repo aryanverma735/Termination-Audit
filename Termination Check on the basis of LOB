@@ -1,4 +1,19 @@
-WITH base AS (
+WITH params AS (
+    SELECT
+        '1598122871' AS org_npi,
+        '474334653'  AS org_tin,
+        '1215469283' AS ind_npi,
+        'Commercial' AS lob_name,
+        TO_DATE('02/19/2026', 'MM/DD/YYYY') AS term_dt,
+        '10054' AS term_rsn_cd,
+        REGEXP_REPLACE(
+            LOWER(TRIM('150 Valpreda Rd, San Marcos, CA, 92069')),
+            '[^a-z0-9]+',
+            ''
+        ) AS input_full_address_norm
+    FROM dual
+),
+base AS (
     SELECT DISTINCT
         L_IND.NPI AS IND_NPI,
         L_IND.MSTR_PROV_ID AS IND_MSTR_PROV_ID,
@@ -22,7 +37,8 @@ WITH base AS (
         RS.RLTD_PADRS_NW_SPCLTY_EFCTV_DT,
         RS.PRMRY_SPCLTY_IND,
         PS.SPCLTY_CD,
-        /* Concatenated address */
+
+        /* Full address for output */
         RTRIM(
             NVL2(NULLIF(TRIM(S.ADRS_LINE_1_TXT), ''), TRIM(S.ADRS_LINE_1_TXT) || ', ', '') ||
             NVL2(NULLIF(TRIM(S.ADRS_LINE_2_TXT), ''), TRIM(S.ADRS_LINE_2_TXT) || ', ', '') ||
@@ -32,16 +48,26 @@ WITH base AS (
             NVL2(NULLIF(TRIM(S.POSTL_CD), ''), TRIM(S.POSTL_CD), ''),
             ', '
         ) AS FULL_ADDRESS,
---        S.ADRS_LINE_1_TXT,
---        S.ADRS_LINE_2_TXT,
---        S.ADRS_LINE_3_TXT,
---        S.POSTL_CD_ST_PRVNC_NM,
---        S.POSTL_CD,
---        S.ADRS_CITY_NM,
---        S.ADRS_CNTRY_NM,
---        S.ADRS_EFCTV_DT,
---        S.ADRS_TRMNTN_DT,
---        S.ADRS_TRMNTN_RSN_CD,
+
+        /* Normalized full address for comparison */
+        REGEXP_REPLACE(
+            LOWER(
+                TRIM(
+                    RTRIM(
+                        NVL2(NULLIF(TRIM(S.ADRS_LINE_1_TXT), ''), TRIM(S.ADRS_LINE_1_TXT) || ', ', '') ||
+                        NVL2(NULLIF(TRIM(S.ADRS_LINE_2_TXT), ''), TRIM(S.ADRS_LINE_2_TXT) || ', ', '') ||
+                        NVL2(NULLIF(TRIM(S.ADRS_LINE_3_TXT), ''), TRIM(S.ADRS_LINE_3_TXT) || ', ', '') ||
+                        NVL2(NULLIF(TRIM(S.ADRS_CITY_NM), ''), TRIM(S.ADRS_CITY_NM) || ', ', '') ||
+                        NVL2(NULLIF(TRIM(S.POSTL_CD_ST_PRVNC_NM), ''), TRIM(S.POSTL_CD_ST_PRVNC_NM) || ', ', '') ||
+                        NVL2(NULLIF(TRIM(S.POSTL_CD), ''), TRIM(S.POSTL_CD), ''),
+                        ', '
+                    )
+                )
+            ),
+            '[^a-z0-9]+',
+            ''
+        ) AS FULL_ADDRESS_NORM,
+
         NW.RGNL_NTWK_ID,
         NW.NTWK_TRMNTN_DT,
         NW.NTWK_TRMNTN_RSN_CD,
@@ -52,13 +78,13 @@ WITH base AS (
     JOIN SPSOWNER.RLTD_PADRS K
         ON K.RLTD_PADRS_KEY = J.RLTD_PADRS_KEY
     JOIN RLTD_PADRS_NTWK_CP RC
-        ON J.RLTD_PADRS_NTWK_KEY = RC.RLTD_PADRS_NTWK_KEY
+        ON RC.RLTD_PADRS_NTWK_KEY = J.RLTD_PADRS_NTWK_KEY
     JOIN RLTD_PADRS_NTWK_SPCLTY RS
-        ON J.RLTD_PADRS_NTWK_KEY = RS.RLTD_PADRS_NTWK_KEY
+        ON RS.RLTD_PADRS_NTWK_KEY = J.RLTD_PADRS_NTWK_KEY
     JOIN PROV_SPCLTY PS
-        ON RS.PROV_SPCLTY_KEY = PS.PROV_SPCLTY_KEY
+        ON PS.PROV_SPCLTY_KEY = RS.PROV_SPCLTY_KEY
     JOIN BOT_PRCG_SPCLTY_XREF PN
-        ON PS.SPCLTY_CD = PN.SPCLTY_CD
+        ON PN.SPCLTY_CD = PS.SPCLTY_CD
     JOIN SPSOWNER.PROV L_ORG
         ON L_ORG.MSTR_PROV_ID = K.MSTR_PROV_ID
        AND L_ORG.PROV_CTGRY_CD = '182'
@@ -72,25 +98,28 @@ WITH base AS (
     JOIN SPSOWNER.PROV_ORG_NTWK PON
         ON PON.PROV_ORG_NTWK_KEY = N.PROV_ORG_NTWK_KEY
     JOIN SPSOWNER.NTWK NW
-        ON PON.NTWK_KEY = NW.NTWK_KEY
+        ON NW.NTWK_KEY = PON.NTWK_KEY
     JOIN SPSOWNER.STNDRDZD_ADRS S
-        ON M.SPS_STNDRDZD_ADRS_ID = S.SPS_STNDRDZD_ADRS_ID
-    JOIN CD_VAL C
-        ON NW.NTWK_LOB_CD = C.CD_VAL_CD
-    WHERE L_ORG.NPI = '1598122871'
-      AND L_ORG.PROV_ORG_FED_TAX_ID = '474334653'
-      AND L_IND.NPI = '1215469283'
-      AND C.CD_VAL_NM = 'Commercial'
-      AND J.RLTD_PADRS_NTWK_TRMNTN_DT = TO_DATE('02/19/2026', 'MM/DD/YYYY')
-      AND J.RLTD_PADRS_NTWK_TRMNTN_RSN_CD = '10054'
+        ON S.SPS_STNDRDZD_ADRS_ID = M.SPS_STNDRDZD_ADRS_ID
+    CROSS JOIN params p
+    WHERE L_ORG.NPI = p.org_npi
+      AND L_ORG.PROV_ORG_FED_TAX_ID = p.org_tin
+      AND L_IND.NPI = p.ind_npi
+      AND EXISTS (
+            SELECT 1
+            FROM CD_VAL C
+            WHERE C.CD_VAL_CD = NW.NTWK_LOB_CD
+              AND C.CD_VAL_NM = p.lob_name
+      )
 )
-SELECT base.*,
-CASE WHEN RLTD_PADRS_NTWK_TRMNTN_DT = TO_DATE('02/19/2026', 'MM/DD/YYYY')
-            AND RLTD_PADRS_NTWK_TRMNTN_RSN_CD = '10054'
-  THEN 'Audit Pass'
-  ELSE 'Audit Fail' 
-END
-
-FROM base
-WHERE REGEXP_REPLACE(LOWER(TRIM(FULL_ADDRESS)), '[^a-z0-9]+', '') =
-      REGEXP_REPLACE(LOWER(TRIM('150 Valpreda Rd, San Marcos, CA, 92069')), '[^a-z0-9]+', '');
+SELECT
+    b.*,
+    CASE
+        WHEN b.RLTD_PADRS_NTWK_TRMNTN_DT = p.term_dt
+         AND b.RLTD_PADRS_NTWK_TRMNTN_RSN_CD = p.term_rsn_cd
+        THEN 'Audit Pass'
+        ELSE 'Audit Fail'
+    END AS AUDIT_STATUS
+FROM base b
+CROSS JOIN params p
+WHERE b.FULL_ADDRESS_NORM = p.input_full_address_norm;
